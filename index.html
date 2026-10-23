@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="A single-file, capability-aware multi-language code validation workbench.">
+  <title>Polyglot Code Validator</title>
+
+  <!-- External libraries are optional enhancements. The core interface and fallback checks are in this file. -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easemotion-css@1.0.0/easemotion.css" onerror="window.__markDependencyFailed('EaseMotion CSS')">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" onerror="window.__markDependencyFailed('Bootstrap')">
+  <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css" onerror="window.__markDependencyFailed('PyScript')">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1/styles/github-dark.min.css" onerror="window.__markDependencyFailed('highlight.js')">
+  <script>
+    window.__dependencyFailures = new Set();
+    window.__markDependencyFailed = function (name) { window.__dependencyFailures.add(name); };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" onerror="window.__markDependencyFailed('Tailwind CSS')"></script>
+  <script defer src="https://unpkg.com/htmx.org@2.0.8" onerror="window.__markDependencyFailed('HTMX')"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.0/dist/cdn.min.js" onerror="window.__markDependencyFailed('Alpine.js')"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/hyperscript.org@0.9.93/dist/_hyperscript.min.js" onerror="window.__markDependencyFailed('hyperscript')"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1/highlight.min.js" onerror="window.__markDependencyFailed('highlight.js')"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/sql.js@1.15.1/dist/sql-wasm.min.js" onerror="window.__markDependencyFailed('sql.js')"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/phpjs/1.3/phpjs.min.js" onerror="window.__markDependencyFailed('php.js')"></script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #0a0e14;
+      --surface: #111823;
+      --surface-2: #172130;
+      --border: #273344;
+      --text: #e8eef7;
+      --muted: #91a0b4;
+      --accent: #91b7ff;
+      --accent-strong: #4b86f7;
+      --success: #4bd6a0;
+      --warning: #f4c76d;
+      --danger: #ff7b84;
+      --editor-bg: #0d131d;
+      --code-size: 14px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; background: var(--page); }
+    body { margin: 0; background: var(--page); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input, select, textarea { font: inherit; }
+    button, select, input[type="checkbox"] { cursor: pointer; }
+    button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .shell { width: min(1500px, calc(100% - 40px)); margin: 0 auto; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:22px 0 18px; border-bottom:1px solid var(--border); }
+    .brand { display:flex; align-items:center; gap:13px; min-width:0; }
+    .brand-mark { display:grid; place-items:center; width:43px; height:43px; border:1px solid #3c5b8b; border-radius:14px; background:linear-gradient(145deg,#223d63,#132238); color:#c7dbff; font-size:20px; font-weight:800; box-shadow:inset 0 1px 0 #ffffff12; }
+    .eyebrow { color:var(--accent); font-size:11px; font-weight:800; letter-spacing:.15em; text-transform:uppercase; }
+    h1 { margin:2px 0 0; font-size:clamp(20px,2.5vw,28px); font-weight:750; letter-spacing:-.035em; }
+    .top-actions { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:9px; }
+    .subhead { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:18px 0; }
+    .subhead p { margin:0; color:var(--muted); font-size:13px; line-height:1.55; max-width:760px; }
+    .status-chip, .capability-chip { display:inline-flex; align-items:center; gap:7px; padding:6px 10px; color:#b8c6d9; background:#151e2b; border:1px solid var(--border); border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap; }
+    .status-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--success); }
+    .status-dot.pending { background:var(--warning); }
+    .status-dot.offline { background:var(--danger); }
+    .workspace { display:grid; grid-template-columns:minmax(0,1.32fr) minmax(320px,.82fr); gap:16px; align-items:stretch; }
+    .panel { min-width:0; background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow:0 12px 35px #00000015; }
+    .panel-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:15px 17px; border-bottom:1px solid var(--border); background:#131b27; }
+    .panel-title { margin:0; font-size:13px; letter-spacing:.02em; font-weight:750; }
+    .panel-subtitle { color:var(--muted); font-size:11px; margin-top:3px; }
+    .editor-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:13px 15px; border-bottom:1px solid var(--border); }
+    .field-label { color:var(--muted); font-size:11px; font-weight:700; }
+    .select-wrap { display:flex; align-items:center; gap:8px; min-width:210px; flex:1; }
+    .select-input { width:100%; min-height:36px; border:1px solid #35445a; border-radius:8px; padding:7px 10px; background:#0d1420; color:var(--text); font-size:12px; }
+    .btn-ui { display:inline-flex; justify-content:center; align-items:center; gap:7px; min-height:35px; padding:8px 12px; border-radius:8px; border:1px solid #344357; background:#202c3c; color:#e2eaf6; font-size:12px; font-weight:700; line-height:1.1; transition:background .16s ease, border-color .16s ease, transform .16s ease; }
+    .btn-ui:hover { background:#29394d; border-color:#4b6588; }
+    .btn-ui:active { transform:translateY(1px); }
+    .btn-ui.primary { background:var(--accent-strong); border-color:var(--accent-strong); color:#fff; }
+    .btn-ui.primary:hover { background:#6196ff; }
+    .btn-ui.ghost { background:transparent; }
+    .btn-ui:disabled { opacity:.55; cursor:wait; }
+    .editor-meta { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:9px 16px; background:#0f1621; color:var(--muted); font-size:11px; border-bottom:1px solid var(--border); }
+    .editor-shell { position:relative; height:475px; background:var(--editor-bg); overflow:hidden; }
+    .line-gutter { position:absolute; z-index:3; inset:0 auto 0 0; width:48px; overflow:hidden; padding-top:17px; border-right:1px solid #253144; color:#627289; text-align:right; user-select:none; pointer-events:none; }
+    .line-gutter-inner { padding-right:12px; font:var(--code-size)/1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space:pre; }
+    .highlight-layer, #sourceCode { position:absolute; inset:0; width:100%; height:100%; margin:0; border:0; border-radius:0; padding:17px 20px 22px 63px; font:var(--code-size)/1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; letter-spacing:0; tab-size:2; white-space:pre; overflow:auto; }
+    .highlight-layer { z-index:1; color:#d8e2f0; pointer-events:none; scrollbar-width:none; }
+    .highlight-layer::-webkit-scrollbar { display:none; }
+    .highlight-layer code { font:inherit; white-space:pre; background:transparent !important; padding:0 !important; }
+    #sourceCode { z-index:2; resize:none; outline:none; overflow:auto; background:transparent; color:#dce5f2; caret-color:#fff; -webkit-text-fill-color:currentColor; }
+    .editor-shell.syntax-on #sourceCode { color:transparent; -webkit-text-fill-color:transparent; text-shadow:none; }
+    #sourceCode::selection { background:#5479ad77; }
+    #sourceCode::placeholder { color:#6d7b91; }
+    .editor-shell:not(.syntax-on) .highlight-layer { display:none; }
+    .editor-footer { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 15px; border-top:1px solid var(--border); background:#111823; color:var(--muted); font-size:11px; }
+    .draft-option { display:flex; gap:8px; align-items:center; line-height:1.3; }
+    .draft-option input { accent-color:var(--accent-strong); }
+    .result-panel { display:flex; flex-direction:column; min-height:620px; }
+    .result-head-right { display:flex; align-items:center; gap:8px; }
+    .result-summary { padding:19px 18px 15px; border-bottom:1px solid var(--border); }
+    .result-status { display:flex; align-items:center; gap:11px; }
+    .result-icon { display:grid; place-items:center; flex:0 0 36px; width:36px; height:36px; border-radius:11px; background:#18392f; color:var(--success); font-size:19px; font-weight:800; }
+    .result-icon.error { background:#45212a; color:var(--danger); }
+    .result-icon.warning { background:#3d3320; color:var(--warning); }
+    .result-title { margin:0; font-weight:750; font-size:15px; }
+    .result-description { margin:4px 0 0; max-width:550px; color:var(--muted); font-size:12px; line-height:1.5; }
+    .result-stats { display:flex; flex-wrap:wrap; gap:7px; margin-top:15px; }
+    .stat { padding:6px 9px; border:1px solid var(--border); border-radius:8px; background:#0f1621; color:#aab8cb; font-size:11px; }
+    .stat strong { color:var(--text); margin-right:4px; }
+    .result-content { flex:1; padding:16px; }
+    .section-label { margin:0 0 11px; color:#97a8bf; font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+    .issues-list { display:flex; flex-direction:column; gap:8px; }
+    .issue { display:flex; align-items:flex-start; gap:10px; padding:12px; border:1px solid #3a2e35; border-radius:10px; background:#1d171e; }
+    .issue.pass { border-color:#21483e; background:#12231f; }
+    .issue.info { border-color:#2c3c52; background:#121c2a; }
+    .issue-icon { margin-top:1px; color:var(--danger); font-size:13px; font-weight:900; }
+    .issue.pass .issue-icon { color:var(--success); }
+    .issue.info .issue-icon { color:var(--accent); }
+    .issue-message { color:#dce4ef; font-size:12px; font-weight:650; line-height:1.45; overflow-wrap:anywhere; }
+    .issue-location { margin-top:4px; color:#93a2b8; font:11px ui-monospace,monospace; }
+    .empty-results { min-height:170px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:25px; border:1px dashed #344255; border-radius:12px; color:var(--muted); }
+    .empty-results .empty-symbol { margin-bottom:12px; font-size:25px; color:#7186a6; }
+    .empty-results strong { margin-bottom:5px; color:#dae4f1; font-size:13px; }
+    .empty-results p { margin:0; max-width:280px; font-size:12px; line-height:1.55; }
+    .dependency-area { border-top:1px solid var(--border); padding:14px 16px; background:#0f1621; }
+    details summary { color:#9fb0c7; font-size:11px; font-weight:750; cursor:pointer; }
+    .dependency-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:12px; }
+    .dependency-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px; border:1px solid var(--border); border-radius:8px; font-size:10px; color:#aab9cc; }
+    .dep-status { color:var(--success); font-weight:800; white-space:nowrap; }
+    .dep-status.optional { color:var(--warning); }
+    .dep-status.failed { color:var(--danger); }
+    .docs-section { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; margin:20px 0 50px; }
+    .docs-card { min-width:0; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:17px; }
+    .docs-card h2 { margin:0 0 6px; font-size:14px; font-weight:750; }
+    .docs-card > p { margin:0 0 13px; color:var(--muted); font-size:12px; line-height:1.6; }
+    .diagram-frame { overflow:auto; min-height:120px; border:1px solid var(--border); border-radius:10px; background:#0c121b; padding:12px; }
+    .mermaid { color:#d5e1f3; font-size:12px; }
+    .capability-table { width:100%; border-collapse:collapse; font-size:11px; }
+    .capability-table th, .capability-table td { padding:9px 6px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+    .capability-table th { color:#8fa2bc; font-weight:800; }
+    .capability-table td { color:#c5d0e0; }
+    .capability-level { display:inline-flex; padding:3px 7px; border-radius:5px; font-weight:750; white-space:nowrap; }
+    .capability-level.full { background:#143a30; color:#73e0b4; }
+    .capability-level.limited { background:#3d3320; color:#f0ca77; }
+    .footnote { margin-top:15px; color:#7e8da2; font-size:10px; line-height:1.6; }
+    .toast { position:fixed; right:18px; bottom:18px; z-index:99; max-width:min(430px,calc(100% - 36px)); padding:11px 14px; border:1px solid #42536a; border-radius:10px; background:#1a2636; color:#e4edf9; font-size:12px; box-shadow:0 10px 30px #0006; }
+    .visually-hidden { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important; }
+    .collapsed { display:none !important; }
+    .is-hidden { display:none !important; }
+    @media (max-width: 980px) {
+      .shell { width:min(100% - 24px,740px); }
+      .workspace { grid-template-columns:minmax(0,1fr); }
+      .editor-shell { height:420px; }
+      .result-panel { min-height:520px; }
+      .docs-section { grid-template-columns:minmax(0,1fr); }
+    }
+    @media (max-width: 560px) {
+      .shell { width:calc(100% - 20px); }
+      .topbar { align-items:flex-start; }
+      .brand-mark { width:38px; height:38px; }
+      .top-actions .btn-ui { padding:7px 9px; }
+      .subhead { align-items:flex-start; }
+      .editor-controls { align-items:stretch; }
+      .select-wrap { min-width:100%; }
+      .editor-controls .btn-ui { flex:1; }
+      .editor-shell { height:360px; }
+      .dependency-list { grid-template-columns:1fr; }
+      .editor-footer { align-items:flex-start; flex-direction:column; }
+      .panel-head { align-items:flex-start; }
+      .result-head-right { display:none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior:auto !important; transition:none !important; animation:none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" x-data="{ docsOpen: true }">
+    <header class="topbar flex items-center justify-between gap-4">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">{ }</div>
+        <div>
+          <div class="eyebrow">Developer tooling / DX</div>
+          <h1>Polyglot Code Validator</h1>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span class="status-chip" title="Core checks run in this browser"><span id="overallDot" class="status-dot pending"></span><span id="overallStatus">Initializing tools</span></span>
+        <button class="btn-ui ghost" type="button" id="toggleDocs" @click="docsOpen = !docsOpen" aria-expanded="true">Documentation <span aria-hidden="true">↗</span></button>
+      </div>
+    </header>
+
+    <section class="subhead">
+      <p>Validate source without running it. Choose a language to see the exact checking capability and its limits; compiler-dependent languages are never represented as fully parsed when only structural checks are available.</p>
+      <span class="status-chip"><span aria-hidden="true">◈</span> Browser-side checks · 100 KiB input limit</span>
+    </section>
+
+    <main class="workspace grid gap-4" aria-label="Code validation workspace">
+      <section class="panel editor-panel" aria-labelledby="editorPanelTitle">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title" id="editorPanelTitle">Source editor</h2>
+            <div class="panel-subtitle">Edit a snippet, then run the selected validator</div>
+          </div>
+          <span class="capability-chip" id="capabilityChip">Syntax parser</span>
+        </div>
+        <div class="editor-controls">
+          <label class="select-wrap" for="languageSelect"><span class="field-label">LANGUAGE</span>
+            <select class="select-input form-select" id="languageSelect" aria-label="Select programming language">
+              <optgroup label="Full / language-aware parser">
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="python">Python</option>
+                <option value="php">PHP</option>
+                <option value="sql">SQL · SQLite</option>
+                <option value="json">JSON</option>
+              </optgroup>
+              <optgroup label="Browser / structural checks">
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="rust">Rust · structural only</option>
+                <option value="c">C · structural only</option>
+                <option value="cpp">C++ · structural only</option>
+                <option value="csharp">C# · structural only</option>
+                <option value="java">Java · structural only</option>
+                <option value="ruby">Ruby · structural only</option>
+                <option value="go">Go · structural only</option>
+                <option value="bash">Bash · structural only</option>
+                <option value="yaml">YAML · structural only</option>
+                <option value="markdown">Markdown · delimiter checks</option>
+              </optgroup>
+            </select>
+          </label>
+          <button class="btn-ui btn btn-sm primary" type="button" id="validateButton"><span aria-hidden="true">✓</span> Validate</button>
+          <button class="btn-ui btn btn-sm" type="button" id="sampleButton">Load sample</button>
+          <button class="btn-ui btn btn-sm" type="button" id="saveDraftButton">Save draft</button>
+          <button class="btn-ui btn btn-sm" type="button" id="clearButton" hx-on:click="document.getElementById('sourceCode').focus()">Clear</button>
+        </div>
+        <div class="editor-meta">
+          <span id="filenameLabel">untitled.js</span>
+          <span><span id="lineCount">1</span> lines <span aria-hidden="true">·</span> <span id="characterCount">0</span> characters</span>
+        </div>
+        <div class="editor-shell" id="editorShell">
+          <div class="line-gutter" aria-hidden="true"><div class="line-gutter-inner" id="lineGutter">1</div></div>
+          <pre class="highlight-layer" id="highlightLayer" aria-hidden="true"><code id="highlightedCode"></code></pre>
+          <label class="visually-hidden" for="sourceCode">Source code</label>
+          <textarea id="sourceCode" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-describedby="editorHint" placeholder="Write or paste code here…"></textarea>
+        </div>
+        <div class="editor-footer">
+          <label class="draft-option"><input type="checkbox" id="rememberDraft"> Remember this draft on this device</label>
+          <span id="editorHint">⌘/Ctrl + Enter to validate · Tab inserts spaces</span>
+        </div>
+      </section>
+
+      <section class="panel result-panel" aria-labelledby="resultPanelTitle">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title" id="resultPanelTitle">Validation results</h2>
+            <div class="panel-subtitle" id="resultTimestamp">Waiting for input</div>
+          </div>
+          <div class="result-head-right"><span class="capability-chip" id="resultCapability">Not run</span><button class="btn-ui ghost" type="button" id="dependencyToggle" _="on click toggle .collapsed on #dependencyDetails">Deps</button></div>
+        </div>
+        <div class="result-summary" aria-live="polite" aria-atomic="true">
+          <div class="result-status">
+            <div class="result-icon warning" id="resultIcon" aria-hidden="true">…</div>
+            <div>
+              <h3 class="result-title" id="resultTitle">Ready to validate</h3>
+              <p class="result-description" id="resultDescription">Choose a language and click Validate. Source code is parsed or structurally checked, not executed.</p>
+            </div>
+          </div>
+          <div class="result-stats">
+            <span class="stat"><strong id="issueCount">—</strong> issues</span>
+            <span class="stat"><strong id="checkMode">Not run</strong> mode</span>
+            <span class="stat"><strong id="elapsedTime">—</strong> ms</span>
+          </div>
+        </div>
+        <div class="result-content">
+          <h3 class="section-label">Findings</h3>
+          <div id="issuesList" class="issues-list">
+            <div class="empty-results">
+              <div class="empty-symbol" aria-hidden="true">⌁</div>
+              <strong>No validation run yet</strong>
+              <p>Issues will appear here with line numbers when the selected checker provides them.</p>
+            </div>
+          </div>
+        </div>
+        <div class="dependency-area">
+          <details id="dependencyDetails">
+            <summary>Dependency status and fallbacks</summary>
+            <div class="dependency-list" id="dependencyList">
+              <div class="dependency-item"><span>Core interface</span><span class="dep-status">Built-in</span></div>
+            </div>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <section class="docs-section" id="docsSection" x-show="docsOpen" x-transition.opacity.duration.150ms aria-label="Documentation">
+      <article class="docs-card">
+        <h2>Validation pipeline</h2>
+        <p>Language-aware parsers are used when available. The structural fallback checks delimiters only and is explicitly marked as limited.</p>
+        <div class="diagram-frame">
+          <pre class="mermaid">flowchart TD
+  A[Editor input] --> B{Input size valid?}
+  B -- No --> E[Show input-limit error]
+  B -- Yes --> C{Language capability}
+  C -- Parser available --> D[Parse / prepare]
+  C -- Partial only --> F[Lexical structure scan]
+  D --> G[Normalize diagnostics]
+  F --> G
+  G --> H[Accessible result panel]</pre>
+        </div>
+      </article>
+      <article class="docs-card">
+        <h2>Application architecture</h2>
+        <p>UI dependencies are optional. If a CDN or parser fails, the app reports the missing capability instead of implying a successful full syntax check.</p>
+        <div class="diagram-frame">
+          <pre class="mermaid">flowchart LR
+  UI[Single index.html] --> SAFE[Size and capability guard]
+  SAFE --> PARSERS[On-demand browser parsers]
+  PARSERS --> RESULT[Normalized issues]
+  SAFE --> BASIC[Structural fallback]
+  BASIC --> RESULT
+  PARSERS -. dependency failure .-> WARN[Clear unavailable message]
+  WARN --> RESULT
+  UI <--> LOCAL[Opt-in LocalStorage draft]</pre>
+        </div>
+        <p class="footnote">The application does not run user-submitted code. A clean parse is not a guarantee of runtime correctness or security. Mermaid diagram rendering requires network access.</p>
+      </article>
+      <article class="docs-card">
+        <h2>Error-handling workflow</h2>
+        <p>Unsupported languages, invalid source, unavailable parsers, and oversized inputs produce clear results instead of a success-shaped fallback.</p>
+        <div class="diagram-frame">
+          <pre class="mermaid">flowchart TD
+  A[Validation request] --> B{Input within size limit?}
+  B -- No --> C[Report size limit]
+  B -- Yes --> D{Language parser available?}
+  D -- Yes --> E[Parse without executing source]
+  D -- No --> F{Structural fallback appropriate?}
+  F -- Yes --> G[Run limited delimiter checks]
+  F -- No --> H[Report validator unavailable]
+  E --> I[Show findings and capability limits]
+  G --> I
+  C --> I
+  H --> I</pre>
+        </div>
+      </article>
+    </section>
+
+    <footer class="footnote" style="padding:0 0 24px">Single-file app · Dependencies load from external CDNs · Never save passwords, tokens, private keys, or confidential source code to LocalStorage.</footer>
+    <div id="toast" class="toast is-hidden" role="status" aria-live="polite"></div>
+    <div id="py-hidden-terminal" class="visually-hidden" aria-hidden="true"></div>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+      const MAX_BYTES = 100 * 1024;
+      const DRAFT_KEY = 'polyglot-validator:draft:v1';
+      const PREF_KEY = 'polyglot-validator:prefs:v1';
+      const $ = (id) => document.getElementById(id);
+      const languageSelect = $('languageSelect');
+      const editor = $('sourceCode');
+      const shell = $('editorShell');
+      const highlightedCode = $('highlightedCode');
+      const highlightLayer = $('highlightLayer');
+      const lineGutter = $('lineGutter');
+      let toastTimer = null;
+      let pythonWorkerPromise = null;
+      const scriptPromises = new Map();
+      const modulePromises = new Map();
+      let lastResult = null;
+
+      const languageInfo = {
+        javascript: { ext:'js', label:'JavaScript', mode:'Syntax parser', level:'full', sample:'const greet = (name) => {\n  return `Hello, ${name}!`;\n};\n\nconsole.log(greet("world"));' },
+        typescript: { ext:'ts', label:'TypeScript', mode:'Parse diagnostics', level:'full', sample:'type User = { id: number; name: string };\n\nconst user: User = { id: 1, name: "Ada" };\nconsole.log(user.name);' },
+        python: { ext:'py', label:'Python', mode:'AST parse', level:'full', sample:'def greet(name: str) -> str:\n    return f"Hello, {name}!"\n\nprint(greet("world"))' },
+        php: { ext:'php', label:'PHP', mode:'PHP parser', level:'full', sample:'<?php\nfunction greet(string $name): string {\n    return "Hello, " . $name;\n}\n\necho greet("world");' },
+        sql: { ext:'sql', label:'SQL · SQLite', mode:'Statement prepare', level:'full', sample:'SELECT name, email\nFROM users\nWHERE active = 1\nORDER BY name;' },
+        json: { ext:'json', label:'JSON', mode:'Native parse', level:'full', sample:'{\n  "name": "Ada",\n  "active": true,\n  "roles": ["editor", "reviewer"]\n}' },
+        html: { ext:'html', label:'HTML', mode:'Browser parse + nesting heuristic', level:'limited', sample:'<!doctype html>\n<html lang="en">\n  <head><title>Hello</title></head>\n  <body>\n    <main><h1>Hello, world!</h1></main>\n  </body>\n</html>' },
+        css: { ext:'css', label:'CSS', mode:'Lexical structure', level:'limited', sample:'.card {\n  display: grid;\n  gap: 1rem;\n  border-radius: 12px;\n}' },
+        rust: { ext:'rs', label:'Rust', mode:'Structural only', level:'limited', sample:'fn main() {\n    let message = "Hello, world!";\n    println!("{}", message);\n}' },
+        c: { ext:'c', label:'C', mode:'Structural only', level:'limited', sample:'#include <stdio.h>\n\nint main(void) {\n    puts("Hello, world!");\n    return 0;\n}' },
+        cpp: { ext:'cpp', label:'C++', mode:'Structural only', level:'limited', sample:'#include <iostream>\n\nint main() {\n    std::cout << "Hello, world!\\n";\n    return 0;\n}' },
+        csharp: { ext:'cs', label:'C#', mode:'Structural only', level:'limited', sample:'using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello, world!");\n    }\n}' },
+        java: { ext:'java', label:'Java', mode:'Structural only', level:'limited', sample:'class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, world!");\n    }\n}' },
+        ruby: { ext:'rb', label:'Ruby', mode:'Structural only', level:'limited', sample:'def greet(name)\n  "Hello, #{name}!"\nend\n\nputs greet("world")' },
+        go: { ext:'go', label:'Go', mode:'Structural only', level:'limited', sample:'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, world!")\n}' },
+        bash: { ext:'sh', label:'Bash', mode:'Structural only', level:'limited', sample:'#!/usr/bin/env bash\nset -eu\nname="world"\nprintf ' + "'Hello, %s!\\n'" + ' "$name"' },
+        yaml: { ext:'yaml', label:'YAML', mode:'Structural only', level:'limited', sample:'name: example\nenabled: true\nsteps:\n  - install\n  - test' },
+        markdown: { ext:'md', label:'Markdown', mode:'Delimiter checks', level:'limited', sample:'# Hello, world!\n\nThis is a **Markdown** sample.\n\n- First item\n- Second item' }
+      };
+
+      const fullInfo = 'Uses a language-aware parser. This does not run the code or prove runtime correctness.';
+      const limitedInfo = 'Structural checks only. A clean result is not full language syntax validation; use the official parser/compiler/linter for authoritative results.';
+
+      function showToast(message) {
+        const toast = $('toast');
+        toast.textContent = message;
+        toast.classList.remove('is-hidden');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.add('is-hidden'), 3400);
+      }
+
+      function byteLength(value) { return new TextEncoder().encode(value).length; }
+      function lineAt(source, offset) { return source.slice(0, Math.max(0, offset)).split('\n').length; }
+
+      function updateEditorStats() {
+        const source = editor.value;
+        const lines = source.split('\n').length;
+        $('lineCount').textContent = String(lines);
+        $('characterCount').textContent = source.length.toLocaleString();
+        $('filenameLabel').textContent = `untitled.${languageInfo[languageSelect.value]?.ext || 'txt'}`;
+        lineGutter.textContent = Array.from({ length: lines }, (_, index) => index + 1).join('\n');
+        updateHighlight();
+      }
+
+      function highlightLanguage(language) {
+        const map = { javascript:'javascript', typescript:'typescript', python:'python', php:'php', sql:'sql', json:'json', html:'xml', css:'css', rust:'rust', c:'c', cpp:'cpp', csharp:'csharp', java:'java', ruby:'ruby', go:'go', bash:'bash', yaml:'yaml', markdown:'markdown' };
+        return map[language] || 'plaintext';
+      }
+
+      function updateHighlight() {
+        const source = editor.value || ' ';
+        const language = languageSelect.value;
+        if (window.hljs && highlightLanguage(language) !== 'plaintext') {
+          try {
+            const selected = highlightLanguage(language);
+            const result = window.hljs.getLanguage(selected)
+              ? window.hljs.highlight(source, { language: selected, ignoreIllegals: true }).value
+              : window.hljs.highlightAuto(source).value;
+            highlightedCode.innerHTML = result;
+            shell.classList.add('syntax-on');
+          } catch (_) {
+            highlightedCode.textContent = source;
+            shell.classList.remove('syntax-on');
+          }
+        } else {
+          highlightedCode.textContent = source;
+          shell.classList.remove('syntax-on');
+        }
+      }
+
+      function syncEditorScroll() {
+        highlightLayer.scrollTop = editor.scrollTop;
+        highlightLayer.scrollLeft = editor.scrollLeft;
+        lineGutter.style.transform = `translateY(${-editor.scrollTop}px)`;
+      }
+
+      function issue(message, line = null, column = null, severity = 'error') {
+        return { message: String(message || 'Validation issue'), line: Number.isInteger(line) && line > 0 ? line : null, column: Number.isInteger(column) && column > 0 ? column : null, severity };
+      }
+
+      function extractPosition(message, source) {
+        const text = String(message || '');
+        let match = text.match(/(?:line|Line)\s+(\d+)(?:[:,]\s*(?:column\s*)?(\d+))?/i);
+        if (match) return { line: Number(match[1]), column: match[2] ? Number(match[2]) : null };
+        match = text.match(/\((\d+):(\d+)\)/);
+        if (match) return { line: Number(match[1]), column: Number(match[2]) };
+        return { line: null, column: null };
+      }
+
+      function normalizeParserError(error, source, label) {
+        const position = error?.loc || error?.location || error?.position || null;
+        let line = position?.line ?? error?.lineNumber ?? error?.line ?? null;
+        let column = position?.column != null ? Number(position.column) + (error?.loc ? 1 : 0) : (error?.column ?? null);
+        if (!Number.isFinite(Number(line)) || Number(line) < 1) {
+          const fallback = extractPosition(error?.message || error, source);
+          line = fallback.line; column = column || fallback.column;
+        }
+        return issue(`${label}: ${String(error?.message || error).split('\n')[0]}`, Number.isFinite(Number(line)) ? Number(line) : null, Number.isFinite(Number(column)) ? Number(column) : null, 'error');
+      }
+
+      function scanStructure(source, language, options = {}) {
+        const issues = [];
+        const stack = [];
+        const pairs = { ')':'(', ']':'[', '}':'{' };
+        const code = String(source);
+        const hashComments = ['python','ruby','bash','yaml'].includes(language);
+        const sqlComments = language === 'sql';
+        const htmlLike = language === 'html';
+        let quote = null;
+        let quoteStart = -1;
+        let lineComment = false;
+        let blockComment = false;
+        let blockStart = -1;
+        let escaped = false;
+        let htmlTagStack = [];
+        const voidTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+
+        for (let i = 0; i < code.length; i++) {
+          const ch = code[i], next = code[i + 1];
+          if (lineComment) { if (ch === '\n') lineComment = false; else continue; }
+          if (blockComment) { if (ch === '*' && next === '/') { blockComment = false; i++; } continue; }
+          if (quote) {
+            if (escaped) { escaped = false; continue; }
+            if (ch === '\\') { escaped = true; continue; }
+            if (ch === quote) { quote = null; continue; }
+            continue;
+          }
+          if (htmlLike) {
+            if (ch === '<' && next === '!') {
+              const commentEnd = code.indexOf('-->', i + 2);
+              if (code.slice(i, i + 4) === '<!--') { i = commentEnd >= 0 ? commentEnd + 2 : code.length; continue; }
+              continue;
+            }
+            if (ch === '<' && /[A-Za-z/]/.test(next || '')) {
+              const end = code.indexOf('>', i + 1);
+              if (end < 0) { issues.push(issue('HTML tag is missing a closing “>” delimiter.', lineAt(code, i), 1)); break; }
+              const raw = code.slice(i + 1, end).trim();
+              const closing = raw.startsWith('/');
+              const selfClosing = raw.endsWith('/');
+              const name = raw.replace(/^\//, '').match(/^([A-Za-z][\w:-]*)/)?.[1]?.toLowerCase();
+              if (name && !raw.startsWith('!') && !raw.startsWith('?')) {
+                if (closing) {
+                  if (voidTags.has(name)) {
+                    issues.push(issue(`Void HTML element “${name}” should not have a closing tag.`, lineAt(code, i), 1, 'warning'));
+                  } else if (!htmlTagStack.length) {
+                    issues.push(issue(`Unexpected closing tag </${name}>.`, lineAt(code, i), 1));
+                  } else {
+                    const found = htmlTagStack.map(item => item.name).lastIndexOf(name);
+                    if (found < 0) issues.push(issue(`Closing tag </${name}> has no matching opening tag.`, lineAt(code, i), 1));
+                    else {
+                      if (found !== htmlTagStack.length - 1) {
+                        const opened = htmlTagStack[htmlTagStack.length - 1];
+                        issues.push(issue(`Tag <${opened.name}> opened on line ${opened.line} was not closed before </${name}>.`, lineAt(code, i), 1));
+                      }
+                      htmlTagStack = htmlTagStack.slice(0, found);
+                    }
+                  }
+                } else if (!selfClosing && !voidTags.has(name)) {
+                  htmlTagStack.push({ name, line: lineAt(code, i) });
+                }
+              }
+              i = end;
+              continue;
+            }
+            continue;
+          }
+          if (ch === '/' && next === '*') { blockComment = true; blockStart = i; i++; continue; }
+          if ((language === 'javascript' || language === 'typescript' || language === 'php' || language === 'rust' || language === 'c' || language === 'cpp' || language === 'csharp' || language === 'java' || language === 'go' || language === 'css' || language === 'sql') && ch === '/' && next === '/') { lineComment = true; i++; continue; }
+          if (sqlComments && ch === '-' && next === '-') { lineComment = true; i++; continue; }
+          if (hashComments && ch === '#') { lineComment = true; continue; }
+          if (ch === '"' || ch === "'" || (ch === '`' && ['javascript','typescript'].includes(language))) { quote = ch; quoteStart = i; continue; }
+          if (options.bracesOnly && !'{}()[]'.includes(ch)) continue;
+          if (ch === '(' || ch === '[' || ch === '{') stack.push({ ch, index: i, line: lineAt(code, i) });
+          else if (ch === ')' || ch === ']' || ch === '}') {
+            const open = stack.pop();
+            if (!open) issues.push(issue(`Unexpected closing delimiter “${ch}”.`, lineAt(code, i), null));
+            else if (open.ch !== pairs[ch]) issues.push(issue(`Delimiter “${ch}” does not match “${open.ch}” opened on line ${open.line}.`, lineAt(code, i), null));
+          }
+        }
+        if (quote) issues.push(issue(`Unterminated ${quote === '`' ? 'template literal' : 'string literal'}.`, lineAt(code, quoteStart), null));
+        if (blockComment) issues.push(issue('Unterminated block comment.', lineAt(code, blockStart), null));
+        for (const open of stack.reverse()) issues.push(issue(`Unclosed delimiter “${open.ch}”.`, open.line, null));
+        if (htmlLike) {
+          for (const open of htmlTagStack.reverse()) issues.push(issue(`Opening tag <${open.name}> on line ${open.line} has no matching closing tag.`, open.line, null));
+        }
+        return issues;
+      }
+
+      function validateHtml(source) {
+        const parsed = new DOMParser().parseFromString(source, 'text/html');
+        const issues = scanStructure(source, 'html');
+        const parserErrors = parsed.querySelectorAll('parsererror');
+        if (parserErrors.length) issues.push(issue('The browser HTML parser reported a parsing error.', null, null));
+        return { issues, mode:'Browser HTML parse + nesting heuristic', notes:['HTML parsers recover from many malformed inputs. This heuristic catches common tag-nesting mistakes but is not an HTML conformance validator.'] };
+      }
+
+      function validateCss(source) {
+        const issues = scanStructure(source, 'css', { bracesOnly:false });
+        if (!source.trim()) return { issues, mode:'Lexical structure', notes:['Empty CSS input.'] };
+        return { issues, mode:'Lexical structure', notes:['Checks delimiters, quotes, and block comments only. It does not validate selector/property grammar or browser compatibility.'] };
+      }
+
+      async function loadScript(url, globalName, dependencyName) {
+        if (globalName && window[globalName]) return window[globalName];
+        if (scriptPromises.has(url)) return scriptPromises.get(url);
+        const promise = new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = url;
+          script.async = true;
+          script.onload = () => globalName && !window[globalName]
+            ? reject(new Error(`${dependencyName || globalName} loaded but its expected API was unavailable.`))
+            : resolve(globalName ? window[globalName] : true);
+          script.onerror = () => reject(new Error(`${dependencyName || globalName || 'A dependency'} could not be loaded. Check the network or CDN availability.`));
+          document.head.appendChild(script);
+        }).catch(error => { scriptPromises.delete(url); throw error; });
+        scriptPromises.set(url, promise);
+        try { return await promise; } catch (error) { window.__dependencyFailures.add(dependencyName || globalName || url); throw error; }
+      }
+
+      async function loadModule(url) {
+        if (modulePromises.has(url)) return modulePromises.get(url);
+        const promise = import(url).catch(error => { modulePromises.delete(url); throw error; });
+        modulePromises.set(url, promise);
+        return promise;
+      }
+
+      async function validateJavaScript(source) {
+        const acorn = await loadScript('https://cdn.jsdelivr.net/npm/acorn@8.15.0/dist/acorn.min.js', 'acorn', 'Acorn');
+        const sourceType = /^\s*(?:import|export)\b/m.test(source) ? 'module' : 'script';
+        try {
+          acorn.parse(source, { ecmaVersion:'latest', sourceType, locations:true, allowHashBang:true });
+          return { issues:[], mode:'Acorn syntax parser', notes:[fullInfo] };
+        } catch (error) {
+          return { issues:[normalizeParserError(error, source, 'JavaScript syntax error')], mode:'Acorn syntax parser', notes:[fullInfo] };
+        }
+      }
+
+      async function validateTypeScript(source) {
+        const ts = await loadScript('https://cdn.jsdelivr.net/npm/typescript@7.0.2/lib/typescript.js', 'ts', 'TypeScript compiler');
+        const sourceFile = ts.createSourceFile('input.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+        const diagnostics = sourceFile.parseDiagnostics || [];
+        const issues = diagnostics.map(diagnostic => {
+          const start = diagnostic.start ?? 0;
+          const lc = sourceFile.getLineAndCharacterOfPosition(start);
+          const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+          return issue(`TypeScript parse error: ${message}`, lc.line + 1, lc.character + 1);
+        });
+        return { issues, mode:'TypeScript parse diagnostics', notes:['Parser diagnostics only: this does not build a TypeScript Program, resolve imports, run type-checking, or execute code.'] };
+      }
+
+      async function validatePython(source) {
+        if (!pythonWorkerPromise) {
+          pythonWorkerPromise = loadModule('https://pyscript.net/releases/2026.7.3/core.js').then(async api => {
+            if (typeof api.donkey !== 'function') throw new Error('PyScript worker API (donkey) is unavailable in this build.');
+            return api.donkey({ type:'py', persistent:false, terminal:'#py-hidden-terminal', config:{} });
+          }).catch(error => { pythonWorkerPromise = null; window.__dependencyFailures.add('PyScript'); throw error; });
+        }
+        const worker = await pythonWorkerPromise;
+        try {
+          // The source is passed as a Python string argument to ast.parse; it is never exec'd/evaluated as submitted code.
+          await worker.execute(`import ast\nast.parse(${JSON.stringify(source)}, filename="<editor-input>")`);
+          return { issues:[], mode:'PyScript worker · ast.parse', notes:['Python grammar parsing only. The submitted source is not executed; runtime name/type errors are not detected.'] };
+        } catch (error) {
+          const message = String(error?.message || error).replace(/^PythonError:\s*/i, '').split('\n').filter(Boolean);
+          const useful = message.find(line => /SyntaxError|IndentationError|TabError|line \d+|invalid syntax|unexpected indent|unindent/i.test(line)) || message[message.length - 1] || 'Python parser rejected the source.';
+          const lineMatch = String(error?.message || error).match(/(?:line\s+)(\d+)/i);
+          return { issues:[issue(useful.trim(), lineMatch ? Number(lineMatch[1]) : null)], mode:'PyScript worker · ast.parse', notes:['Python parser reported a syntax/indentation issue.'] };
+        }
+      }
+
+      async function validatePhp(source) {
+        const mod = await loadModule('https://esm.sh/php-parser@3.7.0');
+        const Engine = mod.default || mod.Engine || mod;
+        if (typeof Engine !== 'function') throw new Error('php-parser module did not expose a parser constructor.');
+        const parser = new Engine({ parser:{ extractDoc:true, phpVersion:'8.3' }, ast:{ withPositions:true } });
+        try {
+          parser.parseCode(source, 'editor-input.php');
+          return { issues:[], mode:'php-parser AST parse', notes:['PHP syntax parsing only; no PHP runtime, Composer autoloading, type analysis, or framework checks are performed.'] };
+        } catch (error) {
+          return { issues:[normalizeParserError(error, source, 'PHP syntax error')], mode:'php-parser AST parse', notes:['PHP runtime behavior and external dependencies are not checked.'] };
+        }
+      }
+
+      function countSqlStatements(source) {
+        let count = 0, hasToken = false, quote = null, lineComment = false, blockComment = false;
+        for (let i = 0; i < source.length; i++) {
+          const ch = source[i], next = source[i + 1];
+          if (lineComment) { if (ch === '\n') lineComment = false; else continue; }
+          if (blockComment) { if (ch === '*' && next === '/') { blockComment = false; i++; } continue; }
+          if (quote) {
+            hasToken = true;
+            if (ch === quote) {
+              if (next === quote) { i++; continue; }
+              quote = null;
+            }
+            continue;
+          }
+          if (ch === '-' && next === '-') { lineComment = true; i++; continue; }
+          if (ch === '/' && next === '*') { blockComment = true; i++; continue; }
+          if (ch === "'" || ch === '"' || ch === '`') { quote = ch; hasToken = true; continue; }
+          if (ch === '[') { quote = ']'; hasToken = true; continue; }
+          if (ch === ';') { if (hasToken) count++; hasToken = false; continue; }
+          if (!/\s/.test(ch)) hasToken = true;
+        }
+        if (hasToken) count++;
+        return count;
+      }
+
+      async function validateSql(source) {
+        const statementCount = countSqlStatements(source);
+        if (statementCount > 1) {
+          return { issues:[issue('Multiple SQL statements detected. Validate one SQLite statement at a time.', null, null)], mode:'Single-statement guard', notes:['No SQL statement was prepared because this input contains multiple statements.'] };
+        }
+        if (statementCount === 0) {
+          return { issues:[issue('No SQL statement was found.', null, null, 'warning')], mode:'Single-statement guard', notes:['Add one non-empty SQLite statement before validating.'] };
+        }
+        if (!window.initSqlJs) throw new Error('sql.js is not available; check the CDN or network connection.');
+        const SQL = await window.initSqlJs({ locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.15.1/dist/${file}` });
+        const db = new SQL.Database();
+        try {
+          const statement = db.prepare(source);
+          statement.free();
+          return { issues:[], mode:'SQLite statement prepare', notes:['The tool only prepares the statement; it does not step or execute it. Enter one statement and use SQLite syntax. Other SQL dialects may differ.'] };
+        } catch (error) {
+          return { issues:[normalizeParserError(error, source, 'SQLite syntax error')], mode:'SQLite statement prepare', notes:['Only the SQLite SQL dialect is supported by this parser.'] };
+        } finally {
+          db.close();
+        }
+      }
+
+      async function validateJson(source) {
+        try {
+          JSON.parse(source);
+          return { issues:[], mode:'Native JSON.parse', notes:['Strict JSON syntax. Comments and trailing commas are not valid JSON.'] };
+        } catch (error) {
+          const match = String(error.message).match(/position\s+(\d+)/i);
+          const offset = match ? Number(match[1]) : null;
+          return { issues:[issue(`JSON syntax error: ${error.message}`, offset == null ? null : lineAt(source, offset), null)], mode:'Native JSON.parse', notes:['Strict JSON syntax; use JSON5 or YAML tools for those formats.'] };
+        }
+      }
+
+      async function validateSource(language, source) {
+        if (source.length === 0 || !source.trim()) return { issues:[issue('The editor is empty. Add source code before validating.', null, null, 'warning')], mode:'Input check', notes:['No parser was run because there is no source text.'] };
+        if (language === 'javascript') return validateJavaScript(source);
+        if (language === 'typescript') return validateTypeScript(source);
+        if (language === 'python') return validatePython(source);
+        if (language === 'php') return validatePhp(source);
+        if (language === 'sql') return validateSql(source);
+        if (language === 'json') return validateJson(source);
+        if (language === 'html') return validateHtml(source);
+        if (language === 'css') return validateCss(source);
+        const issues = scanStructure(source, language, { bracesOnly:false });
+        return { issues, mode:languageInfo[language]?.mode || 'Structural only', notes:[limitedInfo] };
+      }
+
+      function renderResult(result, language, elapsed) {
+        lastResult = result;
+        const errorCount = result.issues.filter(item => item.severity !== 'warning').length;
+        const warningCount = result.issues.filter(item => item.severity === 'warning').length;
+        const failed = errorCount > 0;
+        const onlyWarnings = !failed && warningCount > 0;
+        $('resultIcon').className = `result-icon${failed ? ' error' : onlyWarnings ? ' warning' : ''}`;
+        $('resultIcon').textContent = failed ? '!' : onlyWarnings ? '!' : '✓';
+        $('resultTitle').textContent = failed ? 'Issues detected' : onlyWarnings ? 'Review recommended' : 'No issues detected';
+        const info = languageInfo[language];
+        $('resultDescription').textContent = failed
+          ? `${errorCount} issue${errorCount === 1 ? '' : 's'} found by ${result.mode}. Review the findings below.`
+          : onlyWarnings ? `${warningCount} warning${warningCount === 1 ? '' : 's'} returned by ${result.mode}.`
+          : `The ${info.label} checker completed. Read the capability note below before treating this as authoritative.`;
+        $('issueCount').textContent = String(result.issues.length);
+        $('checkMode').textContent = result.mode;
+        $('elapsedTime').textContent = Math.max(0, elapsed).toFixed(1);
+        $('resultCapability').textContent = info.level === 'full' ? 'Language-aware' : 'Limited checks';
+        $('resultTimestamp').textContent = `Checked ${new Date().toLocaleTimeString()} · ${byteLength(editor.value).toLocaleString()} bytes`;
+
+        const list = $('issuesList');
+        list.replaceChildren();
+        if (!result.issues.length) {
+          const node = document.createElement('div');
+          node.className = 'issue pass';
+          node.innerHTML = '<span class="issue-icon" aria-hidden="true">✓</span><div><div class="issue-message">No findings from the selected checker.</div><div class="issue-location">This does not prove runtime correctness.</div></div>';
+          list.appendChild(node);
+        } else {
+          for (const finding of result.issues.slice(0, 100)) {
+            const node = document.createElement('div');
+            node.className = `issue${finding.severity === 'warning' ? ' info' : ''}`;
+            const icon = document.createElement('span');
+            icon.className = 'issue-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = finding.severity === 'warning' ? '!' : '×';
+            const body = document.createElement('div');
+            const message = document.createElement('div');
+            message.className = 'issue-message';
+            message.textContent = finding.message;
+            body.appendChild(message);
+            if (finding.line || finding.column) {
+              const location = document.createElement('div');
+              location.className = 'issue-location';
+              location.textContent = `Line ${finding.line || '?'}${finding.column ? `, column ${finding.column}` : ''}`;
+              body.appendChild(location);
+            }
+            node.append(icon, body);
+            list.appendChild(node);
+          }
+          if (result.issues.length > 100) {
+            const extra = document.createElement('p');
+            extra.className = 'footnote';
+            extra.textContent = `Showing the first 100 of ${result.issues.length} findings.`;
+            list.appendChild(extra);
+          }
+        }
+        if (result.notes?.length) {
+          const notes = document.createElement('div');
+          notes.className = 'issue info';
+          const icon = document.createElement('span');
+          icon.className = 'issue-icon'; icon.textContent = 'i'; icon.setAttribute('aria-hidden','true');
+          const body = document.createElement('div');
+          body.className = 'issue-message';
+          body.textContent = result.notes.join(' ');
+          notes.append(icon, body);
+          list.appendChild(notes);
+        }
+      }
+
+      async function validate() {
+        const source = editor.value;
+        const language = languageSelect.value;
+        const size = byteLength(source);
+        if (size > MAX_BYTES) {
+          renderResult({ issues:[issue(`Input is ${size.toLocaleString()} bytes; the limit is ${MAX_BYTES.toLocaleString()} bytes. Shorten the source before validating.`, null, null)], mode:'Input guard', notes:['Validation was not run.'] }, language, 0);
+          return;
+        }
+        const button = $('validateButton');
+        button.disabled = true;
+        button.textContent = 'Checking…';
+        $('overallStatus').textContent = 'Validating';
+        $('overallDot').className = 'status-dot pending';
+        const start = performance.now();
+        try {
+          const result = await validateSource(language, source);
+          renderResult(result, language, performance.now() - start);
+          $('overallStatus').textContent = result.issues.some(item => item.severity === 'error') ? 'Findings available' : 'Ready';
+          $('overallDot').className = `status-dot${result.issues.some(item => item.severity === 'error') ? ' offline' : ''}`;
+          if (languageInfo[language].level === 'limited') $('resultCapability').textContent = 'Limited checks';
+        } catch (error) {
+          const message = String(error?.message || error || 'Unknown dependency failure');
+          renderResult({ issues:[issue(message, null, null)], mode:'Validator unavailable', notes:['No full validation result is available. Check the network, CDN, browser console, or choose a structural-only fallback where appropriate.'] }, language, performance.now() - start);
+          $('overallStatus').textContent = 'Dependency issue';
+          $('overallDot').className = 'status-dot offline';
+          showToast(message);
+        } finally {
+          button.disabled = false;
+          button.innerHTML = '<span aria-hidden="true">✓</span> Validate';
+          updateDependencyStatus();
+        }
+      }
+
+      function updateCapability() {
+        const language = languageSelect.value;
+        const info = languageInfo[language];
+        $('capabilityChip').textContent = info.level === 'full' ? info.mode : 'Structural checks only';
+        $('filenameLabel').textContent = `untitled.${info.ext}`;
+        editor.setAttribute('aria-label', `${info.label} source editor`);
+        updateHighlight();
+        savePreferences();
+      }
+
+      function loadSample() {
+        editor.value = languageInfo[languageSelect.value].sample;
+        updateEditorStats();
+        syncEditorScroll();
+        showToast(`Loaded the ${languageInfo[languageSelect.value].label} sample.`);
+        if ($('rememberDraft').checked) persistDraft();
+      }
+
+      function clearEditor() {
+        editor.value = '';
+        updateEditorStats();
+        syncEditorScroll();
+        editor.focus();
+        showToast('Editor cleared. No draft was saved.');
+        if ($('rememberDraft').checked) persistDraft();
+      }
+
+      function savePreferences() {
+        try {
+          localStorage.setItem(PREF_KEY, JSON.stringify({ language:languageSelect.value, rememberDraft:$('rememberDraft').checked }));
+        } catch (_) { /* Private browsing or storage policy can disable LocalStorage. */ }
+      }
+
+      function persistDraft() {
+        try {
+          localStorage.setItem(DRAFT_KEY, JSON.stringify({ language:languageSelect.value, source:editor.value, savedAt:new Date().toISOString() }));
+          showToast('Draft saved in this browser on this device.');
+        } catch (_) {
+          showToast('LocalStorage is unavailable. The draft was not saved.');
+        }
+      }
+
+      function restorePreferencesAndDraft() {
+        try {
+          const pref = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
+          if (pref?.language && languageInfo[pref.language]) languageSelect.value = pref.language;
+          $('rememberDraft').checked = pref?.rememberDraft === true;
+          if ($('rememberDraft').checked) {
+            const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+            if (draft && typeof draft.source === 'string' && draft.source.length <= MAX_BYTES) {
+              if (languageInfo[draft.language]) languageSelect.value = draft.language;
+              editor.value = draft.source;
+            }
+          }
+        } catch (_) { /* Ignore corrupt or unavailable local settings. */ }
+      }
+
+      const staticDependencies = [
+        ['EaseMotion CSS', 'css'], ['Tailwind CSS', 'optional'], ['Bootstrap', 'css'], ['Motion', 'on demand'],
+        ['HTMX', 'optional'], ['Alpine.js', 'optional'], ['hyperscript', 'optional'], ['highlight.js', 'optional'],
+        ['Acorn', 'on demand'], ['TypeScript', 'on demand'], ['PyScript', 'on demand'], ['php-parser', 'on demand'],
+        ['php.js', 'optional'], ['sql.js', 'SQL checker'], ['Mermaid', 'diagrams'], ['LocalStorage', 'browser API']
+      ];
+
+      function updateDependencyStatus() {
+        const list = $('dependencyList');
+        list.replaceChildren();
+        for (const [name, purpose] of staticDependencies) {
+          const failed = window.__dependencyFailures.has(name);
+          const item = document.createElement('div');
+          item.className = 'dependency-item';
+          const title = document.createElement('span'); title.textContent = name;
+          const status = document.createElement('span');
+          status.className = `dep-status${failed ? ' failed' : ['optional','on demand'].includes(purpose) ? ' optional' : ''}`;
+          status.textContent = failed ? 'Unavailable' : purpose === 'on demand' ? 'Lazy load' : purpose === 'optional' ? 'Enhancement' : purpose === 'browser API' ? (typeof localStorage !== 'undefined' ? 'Available' : 'Unavailable') : 'Configured';
+          item.append(title, status);
+          list.appendChild(item);
+        }
+        for (const name of window.__dependencyFailures) {
+          if (staticDependencies.some(([dependency]) => dependency === name)) continue;
+          const item = document.createElement('div'); item.className = 'dependency-item';
+          const title = document.createElement('span'); title.textContent = name;
+          const status = document.createElement('span'); status.className = 'dep-status failed'; status.textContent = 'Unavailable';
+          item.append(title, status); list.appendChild(item);
+        }
+      }
+
+      async function initOptionalVisuals() {
+        try {
+          const mermaidModule = await loadModule('https://cdn.jsdelivr.net/npm/mermaid@12/dist/mermaid.esm.min.mjs');
+          const mermaid = mermaidModule.default || mermaidModule;
+          mermaid.initialize({ startOnLoad:false, securityLevel:'strict', theme:'dark', flowchart:{ htmlLabels:false, curve:'basis' } });
+          await mermaid.run({ querySelector:'.mermaid' });
+        } catch (_) {
+          window.__dependencyFailures.add('Mermaid');
+          document.querySelectorAll('.mermaid').forEach(node => { node.textContent = 'Mermaid could not load. Diagram source remains in this file; check CDN access to render it.'; });
+        }
+        try {
+          const motionModule = await loadModule('https://cdn.jsdelivr.net/npm/motion@14/+esm');
+          const animate = motionModule.animate || motionModule.default?.animate;
+          if (typeof animate === 'function' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            animate('.brand-mark', { opacity:[0,1], scale:[0.94,1] }, { duration:0.35, ease:'easeOut' });
+          }
+        } catch (_) {
+          window.__dependencyFailures.add('Motion');
+        }
+        updateDependencyStatus();
+      }
+
+      languageSelect.addEventListener('change', () => {
+        updateCapability();
+        updateEditorStats();
+      });
+      editor.addEventListener('input', () => {
+        updateEditorStats();
+        if ($('rememberDraft').checked) {
+          clearTimeout(editor.__draftSaveTimer);
+          editor.__draftSaveTimer = setTimeout(() => {
+            try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ language:languageSelect.value, source:editor.value, savedAt:new Date().toISOString() })); }
+            catch (_) { showToast('LocalStorage is unavailable; your draft remains only in this tab.'); }
+          }, 500);
+        }
+      });
+      editor.addEventListener('scroll', syncEditorScroll, { passive:true });
+      editor.addEventListener('keydown', event => {
+        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); validate(); }
+        if (event.key === 'Tab') {
+          event.preventDefault();
+          const start = editor.selectionStart, end = editor.selectionEnd;
+          editor.setRangeText('  ', start, end, 'end');
+          editor.dispatchEvent(new Event('input', { bubbles:true }));
+        }
+      });
+      $('validateButton').addEventListener('click', validate);
+      $('sampleButton').addEventListener('click', loadSample);
+      $('saveDraftButton').addEventListener('click', () => { $('rememberDraft').checked = true; savePreferences(); persistDraft(); });
+      $('clearButton').addEventListener('click', clearEditor);
+      $('rememberDraft').addEventListener('change', () => {
+        savePreferences();
+        if ($('rememberDraft').checked) persistDraft();
+        else {
+          try { localStorage.removeItem(DRAFT_KEY); showToast('Draft persistence disabled; the saved draft was removed from this browser.'); }
+          catch (_) { showToast('Draft persistence disabled for this page.'); }
+        }
+      });
+      $('toggleDocs').addEventListener('click', () => {
+        const expanded = $('toggleDocs').getAttribute('aria-expanded') === 'true';
+        $('toggleDocs').setAttribute('aria-expanded', String(!expanded));
+        $('toggleDocs').innerHTML = expanded ? 'Documentation <span aria-hidden="true">↘</span>' : 'Documentation <span aria-hidden="true">↗</span>';
+        if (!expanded) $('docsSection').scrollIntoView({ behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start' });
+      });
+
+      restorePreferencesAndDraft();
+      updateCapability();
+      updateEditorStats();
+      syncEditorScroll();
+      updateDependencyStatus();
+      $('overallStatus').textContent = 'Ready';
+      $('overallDot').className = 'status-dot';
+      initOptionalVisuals();
+    })();
+  </script>
+</body>
+</html>
